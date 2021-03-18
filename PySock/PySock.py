@@ -2,7 +2,7 @@ import socket
 import json
 
 class commModule:
-    def __init__(self, ip, port=none):
+    def __init__(self, ip, port=None):
         self._IP = ip.split(':')[0] if ':' in ip else ip
         self._Port = port if not port else ip.split(':')[1] if ':' in ip else None
 
@@ -24,7 +24,7 @@ class commModule:
     def disConnect(self):
         pass
 
-    def sendMessage(self, message, requireRecipt=false, timeout=0):
+    def sendMessage(self, message, requireRecipt=False, timeout=0):
         pass
 
     def hasPending(self):
