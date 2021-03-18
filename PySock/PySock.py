@@ -4,7 +4,7 @@ import json
 class commModule:
     def __init__(self, ip, port=None):
         self._IP = ip.split(':')[0] if ':' in ip else ip
-        self._Port = port if not port else ip.split(':')[1] if ':' in ip else None
+        self._Port = port if port is not None else ip.split(':')[1] if ':' in ip else None
 
     def _setIP(self, ip):
         self._IP = ip
@@ -33,5 +33,5 @@ class commModule:
     def reciveMessage(self, timeout=0):
         pass
 
-IP = property(lambda self: self._IP, lambda self, ip: self._setIP(ip))
-PORT = property(lambda self: self._Port, lambda self, port: self._setPort(port))
+    IP = property(lambda self: self._IP, lambda self, ip: self._setIP(ip))
+    PORT = property(lambda self: self._Port, lambda self, port: self._setPort(port))
