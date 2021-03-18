@@ -1,5 +1,4 @@
-import socket
-import json
+import socket, json, select
 from queue import Queue
 from threading import Thread
 
@@ -20,27 +19,26 @@ class commModule:
     def _deserialize(self, message):
         return json.loads(message)
 
-    def connect(self, remoteIP, remotePort, timeout=0):
+    def connect(self, remoteIP, remotePort):
         pass
 
     def disConnect(self):
         pass
 
-    def sendMessage(self, message, requireRecipt=False, timeout=0):
+    def sendMessage(self, message):
         pass
 
     def hasPending(self):
         pass
 
-    def reciveMessage(self, timeout=0):
+    def reciveMessage(self):
         pass
 
     IP = property(lambda self: self._IP, lambda self, ip: self._setIP(ip))
     PORT = property(lambda self: self._Port, lambda self, port: self._setPort(port))
 
-class commClient(commModule):
-    def __init__(self, ip, port=None):
-        super().__init__(ip, port)
+class Client(commModule):
+    def __init__(self):
         self._Sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._MSGSPan = 1024
 
@@ -48,9 +46,9 @@ class commClient(commModule):
         self._QOut = Queue()
         self._Daemon = None
 
-    def connect(self, remoteIP, remotePort):
+    def connect(self, ip, port):
+        self._Sock.connect((ip, port))
         self._Daemon = Thread(target=self._worker)
-        self._Sock.connect((remoteIP, remotePort))
     
     def disConnect(self):
         self._QOut.put('EXIT')
@@ -65,15 +63,15 @@ class commClient(commModule):
     def _deserialize(self, message):
         return super()._deserialize(message.decode('utf-8'))
 
-    def sendMessage(self, message, messageType):
-        self._Sock.sendall(self._serialize(message))
+    def sendMessage(self, message):
+        self._QOut.put(self._serialize(message))
 
     def hasPending(self):
         return not self._QIN.empty()
 
     def reciveMessage(self):
         if not self._QIN.empty():
-            msg = self._QIN.get_nowait()
+            msg = self._QIN.get()
 
             if isinstance(msg, Exception):
                 raise msg
@@ -85,7 +83,7 @@ class commClient(commModule):
         while exe:
             try:
                 if not self._QOut.empty():
-                    msg = self._QOut.get_nowait()
+                    msg = self._QOut.get()
 
                     if msg == 'EXIT':
                         exe = False
@@ -107,8 +105,89 @@ class commClient(commModule):
             except Exception as e:
                 self._QIN.put(e)
 
+class Server(commModule):
+    def __init__(self):
+        self._Sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._MSGSPan = 1024
 
+        self._QIN = Queue()
+        self._QOut = Queue()
+        self._Daemon = None
 
+    def connect(self, bindIP, bindPort, maxClient=5):
+        self._Sock.bind((bindIP, bindIP))
+        self._Sock.listen(maxClient)
+        self._Daemon = Thread(target=self._worker)
+
+    def disConnect(self):
+        self._QOut.put('EXIT')
+        self._Daemon.join()
+        self._Daemon = None
+
+        self._Sock.close()
+
+    def _serialize(self, message):
+        return bytes(super()._serialize(message))
+
+    def _deserialize(self, message):
+        return super()._deserialize(message.decode('utf-8'))
+
+    def sendMessage(self, message, client):
+        self._QOut.put([client, self._serialize(message)])
+
+    def hasPending(self):
+        return not self._QIN.empty()
+
+    def reciveMessage(self):
+        if not self._QIN.empty():
+            msg = self._QIN.get()
+
+            if isinstance(msg, Exception):
+                raise msg
             
+            return self._deserialize(msg[1]), [0]
 
+    def _worker(self):
+        exe = True
+        clients = [self._Sock]
+        while exe:
+            try:
+                if not self._QOut.empty():
+                    msg = self._QOut.get()
+
+                    if msg == 'EXIT':
+                        exe = False
+                    elif msg[0] in clients:
+                        msg[0].sendall(msg[1])
+
+                pending, waiting, exceptional = select.select(clients, clients, clients)
+            
+                for cli in pending:
+                    if cli is self._Sock:
+                        connection, address = cli.accept()
+                        connection.setblocking(0)
+                        clients.append(connection)
+                    else:
+                        msg = ''
+
+                        while True:
+                            data = cli.recv(self._MSGSPan)
+
+                            if len(data) <= 0:
+                                break
+                            else:
+                                msg += data
+                        if len(msg) <= 0:
+                            clients.remove(cli)
+                            cli.close()
+                        else:
+                            self._QIN.put([cli, msg])
+
+                for cli in exceptional:
+                    clients.remove(cli)
+                    cli.close()
+            
+            except Exception as e:
+                self._QIN.put(e)
+    
 
